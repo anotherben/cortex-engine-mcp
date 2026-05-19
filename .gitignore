@@ -1,0 +1,7 @@
+node_modules/
+.cortex/
+.DS_Store
+coverage/
+.env
+.env.*
+npm-debug.log*
