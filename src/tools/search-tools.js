@@ -75,8 +75,9 @@ function registerSearchTools(server, engine, telemetry, state) {
     'cortex_find_text',
     'Regex/literal search across indexed file contents',
     {
-      pattern: z.string().describe('Search pattern (regex)'),
+      pattern: z.string().describe('Search pattern. Treated as literal text unless use_regex is true.'),
       case_sensitive: z.boolean().optional().describe('Case sensitive search'),
+      use_regex: z.boolean().optional().describe('Treat pattern as a constrained regular expression'),
       repo: z.string().optional().describe('Filter to a specific repo name (multi-repo only)'),
     },
     async (params) => {
@@ -89,9 +90,21 @@ function registerSearchTools(server, engine, telemetry, state) {
           ],
         };
       }
-      const results = eng.findText(params.pattern, {
-        caseSensitive: params.case_sensitive,
-      });
+      let results;
+      try {
+        results = eng.findText(params.pattern, {
+          caseSensitive: params.case_sensitive,
+          useRegex: params.use_regex === true,
+        });
+      } catch (err) {
+        const result = {
+          content: [{ type: 'text', text: JSON.stringify({ error: err.message }, null, 2) }],
+          isError: true,
+        };
+        const elapsed = performance.now() - t0;
+        if (!telemetry) return result;
+        return telemetry.wrapTimingOnly(result, elapsed);
+      }
       const responseText = JSON.stringify(results, null, 2);
       const result = { content: [{ type: 'text', text: responseText }] };
       const elapsed = performance.now() - t0;
@@ -128,7 +141,18 @@ function registerSearchTools(server, engine, telemetry, state) {
           ],
         };
       }
-      const results = eng.findReferences(params.identifier);
+      let results;
+      try {
+        results = eng.findReferences(params.identifier);
+      } catch (err) {
+        const result = {
+          content: [{ type: 'text', text: JSON.stringify({ error: err.message }, null, 2) }],
+          isError: true,
+        };
+        const elapsed = performance.now() - t0;
+        if (!telemetry) return result;
+        return telemetry.wrapTimingOnly(result, elapsed);
+      }
       const responseText = JSON.stringify(results, null, 2);
       const result = { content: [{ type: 'text', text: responseText }] };
       const elapsed = performance.now() - t0;

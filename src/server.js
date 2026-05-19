@@ -214,6 +214,15 @@ async function createServer(projectRoots, config = {}) {
   return { server, engine, git, knowledge, fleet, telemetry, state };
 }
 
+async function startStdioServer(projectRoots, config = {}) {
+  const started = await createServer(projectRoots, config);
+  const transport = new StdioServerTransport();
+  await started.server.connect(transport);
+  // Index AFTER MCP handshake so clients do not time out during startup.
+  await started.state.engineRef.ready();
+  return started;
+}
+
 // Run as MCP stdio server if invoked directly
 if (require.main === module) {
   const args = process.argv.slice(2);
@@ -226,17 +235,11 @@ if (require.main === module) {
     roots = args; // multiple roots -- pass the whole array
   }
 
-  createServer(roots)
-    .then(async ({ server, state }) => {
-      const transport = new StdioServerTransport();
-      await server.connect(transport);
-      // Index AFTER MCP handshake so we don't timeout
-      await state.engineRef.ready();
-    })
+  startStdioServer(roots)
     .catch((err) => {
       console.error('Failed to start cortex-engine:', err);
       process.exit(1);
     });
 }
 
-module.exports = { createServer, resolveConfig, resolveProjectRoot };
+module.exports = { createServer, resolveConfig, resolveProjectRoot, startStdioServer };

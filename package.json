@@ -18,10 +18,10 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.8.0",
-    "chokidar": "^3.6.0",
-    "simple-git": "^3.33.0",
+    "chokidar": "^4.0.3",
+    "simple-git": "^3.36.0",
     "tree-sitter": "^0.21.1",
     "tree-sitter-c-sharp": "^0.23.1",
     "tree-sitter-go": "^0.21.2",

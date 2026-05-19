@@ -6,6 +6,8 @@ const { getSourceType } = require('./store');
 const Parser = require('./parser');
 const Watcher = require('./watcher');
 const Tagger = require('./tagger');
+const { resolveInsideRoot } = require('./path-utils');
+const { buildIdentifierRegExp, buildSearchRegExp } = require('./search-utils');
 
 const DEFAULT_EXTENSIONS = [
   '.js',
@@ -65,6 +67,9 @@ class IndexEngine {
 
   async ready() {
     await this.watcher.ready();
+    for (const absPath of this.watcher.getWatchedFiles()) {
+      this._indexFile(absPath);
+    }
     await this._checkStaleIndex();
   }
 
@@ -168,15 +173,31 @@ class IndexEngine {
     }
   }
 
+  _resolveProjectFile(filePath) {
+    return resolveInsideRoot(this.projectRoot, filePath);
+  }
+
+  _isRegularProjectFile(absPath) {
+    try {
+      return fs.lstatSync(absPath).isFile();
+    } catch {
+      return false;
+    }
+  }
+
   _relPath(absPath) {
-    return path.relative(this.projectRoot, absPath);
+    const resolved = this._resolveProjectFile(absPath);
+    return resolved ? resolved.relPath : path.relative(this.projectRoot, absPath);
   }
 
   _indexFile(absPath) {
-    const relPath = this._relPath(absPath);
+    const resolvedPath = this._resolveProjectFile(absPath);
+    if (!resolvedPath || !this._isRegularProjectFile(resolvedPath.absPath)) return;
+
+    const relPath = resolvedPath.relPath;
     let content;
     try {
-      content = fs.readFileSync(absPath, 'utf-8');
+      content = fs.readFileSync(resolvedPath.absPath, 'utf-8');
     } catch {
       return; // File may have been deleted between event and read
     }
@@ -225,21 +246,28 @@ class IndexEngine {
   }
 
   _removeFile(absPath) {
-    const relPath = this._relPath(absPath);
-    this.store.deleteFile(relPath);
-    this._contentCache.delete(relPath);
+    const resolvedPath = this._resolveProjectFile(absPath);
+    if (!resolvedPath) return;
+    this.store.deleteFile(resolvedPath.relPath);
+    this._contentCache.delete(resolvedPath.relPath);
   }
 
   // --- Query API ---
 
   getOutline(filePath) {
-    const file = this.store.getFile(filePath);
+    const resolvedPath = this._resolveProjectFile(filePath);
+    if (!resolvedPath) return [];
+
+    const file = this.store.getFile(resolvedPath.relPath);
     if (!file) return [];
     return this.store.getSymbolsByFile(file.id);
   }
 
   readSymbol(filePath, symbolName) {
-    const file = this.store.getFile(filePath);
+    const resolvedPath = this._resolveProjectFile(filePath);
+    if (!resolvedPath) return null;
+
+    const file = this.store.getFile(resolvedPath.relPath);
     if (!file) return null;
 
     const symbols = this.store.getSymbolsByFile(file.id);
@@ -247,12 +275,12 @@ class IndexEngine {
     if (!sym) return null;
 
     // Read from cache or disk
-    let content = this._contentCache.get(filePath);
+    let content = this._contentCache.get(resolvedPath.relPath);
     if (!content) {
-      const absPath = path.join(this.projectRoot, filePath);
+      if (!this._isRegularProjectFile(resolvedPath.absPath)) return null;
       try {
-        content = fs.readFileSync(absPath, 'utf-8');
-        this._contentCache.set(filePath, content);
+        content = fs.readFileSync(resolvedPath.absPath, 'utf-8');
+        this._contentCache.set(resolvedPath.relPath, content);
       } catch {
         return null;
       }
@@ -271,25 +299,37 @@ class IndexEngine {
   }
 
   readRange(filePath, startLine, endLine) {
-    if (!filePath || typeof filePath !== 'string') return null;
-    let content = this._contentCache.get(filePath);
+    const resolvedPath = this._resolveProjectFile(filePath);
+    if (!resolvedPath) return null;
+
+    const file = this.store.getFile(resolvedPath.relPath);
+    if (!file) return null;
+
+    let content = this._contentCache.get(resolvedPath.relPath);
     if (!content) {
-      const absPath = path.join(this.projectRoot, filePath);
+      if (!this._isRegularProjectFile(resolvedPath.absPath)) return null;
       try {
-        content = fs.readFileSync(absPath, 'utf-8');
+        content = fs.readFileSync(resolvedPath.absPath, 'utf-8');
+        this._contentCache.set(resolvedPath.relPath, content);
       } catch {
         return null;
       }
     }
+
+    const start = Math.max(1, Math.trunc(startLine || 1));
+    const end = Math.max(start, Math.trunc(endLine || start));
     const lines = content.split('\n');
-    return lines.slice(startLine - 1, endLine).join('\n');
+    return lines.slice(start - 1, end).join('\n');
   }
 
   getContext(filePath, symbolName) {
-    const file = this.store.getFile(filePath);
+    const resolvedPath = this._resolveProjectFile(filePath);
+    if (!resolvedPath) return null;
+
+    const file = this.store.getFile(resolvedPath.relPath);
     if (!file) return null;
 
-    const symbol = this.readSymbol(filePath, symbolName);
+    const symbol = this.readSymbol(resolvedPath.relPath, symbolName);
     const imports = this.store.getImportsByFile(file.id);
     const outline = this.store.getSymbolsByFile(file.id);
 
@@ -307,7 +347,10 @@ class IndexEngine {
   findText(pattern, opts = {}) {
     // Simple grep-like search across cached files
     const results = [];
-    const regex = new RegExp(pattern, opts.caseSensitive ? '' : 'i');
+    const regex = buildSearchRegExp(pattern, {
+      caseSensitive: opts.caseSensitive,
+      useRegex: opts.useRegex,
+    });
 
     for (const [filePath, content] of this._contentCache) {
       const lines = content.split('\n');
@@ -327,7 +370,7 @@ class IndexEngine {
   findReferences(identifier) {
     // Search across all cached files for the identifier
     const results = [];
-    const regex = new RegExp(`\\b${identifier}\\b`);
+    const regex = buildIdentifierRegExp(identifier);
 
     for (const [filePath, content] of this._contentCache) {
       const lines = content.split('\n');
@@ -360,17 +403,21 @@ class IndexEngine {
 
   reindex(filePath) {
     if (filePath) {
-      const absPath = path.join(this.projectRoot, filePath);
-      this._indexFile(absPath);
-    } else {
-      // Force reindex all cached files
-      for (const [relPath] of this._contentCache) {
-        const absPath = path.join(this.projectRoot, relPath);
-        // Clear the hash to force re-parse
-        this.store.deleteFile(relPath);
-        this._indexFile(absPath);
-      }
+      const resolvedPath = this._resolveProjectFile(filePath);
+      if (!resolvedPath) return false;
+      this._indexFile(resolvedPath.absPath);
+      return true;
     }
+
+    // Force reindex all cached files
+    for (const [relPath] of this._contentCache) {
+      const resolvedPath = this._resolveProjectFile(relPath);
+      if (!resolvedPath) continue;
+      // Clear the hash to force re-parse
+      this.store.deleteFile(resolvedPath.relPath);
+      this._indexFile(resolvedPath.absPath);
+    }
+    return true;
   }
 
   async close() {

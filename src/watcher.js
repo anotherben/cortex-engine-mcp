@@ -46,9 +46,7 @@ class Watcher extends EventEmitter {
     this.rootPath = path.resolve(rootPath);
     this.config = config;
 
-    const extensions = config.extensions || DEFAULT_EXTENSIONS;
-    const extGlob =
-      extensions.length === 1 ? `**/*${extensions[0]}` : `**/*{${extensions.join(',')}}`;
+    this.extensions = new Set(config.extensions || DEFAULT_EXTENSIONS);
 
     // Build ignore set: default dirs + custom dirs from config.ignorePaths
     const ignoreDirs = new Set(DEFAULT_IGNORE_DIRS);
@@ -59,31 +57,38 @@ class Watcher extends EventEmitter {
       else ignoreDirs.add(p);
     }
 
-    // Function-based ignore is more reliable than glob patterns in chokidar
+    // Function-based directory ignore is stable across chokidar major versions.
     const ignoreFn = (filePath) => {
-      const parts = filePath.split(path.sep);
+      const parts = filePath.split(/[\\\/]+/);
       return parts.some((part) => ignoreDirs.has(part));
     };
 
-    this.watcher = watch(extGlob, {
+    this.watcher = watch('.', {
       cwd: this.rootPath,
       ignored: ignoreFn,
       persistent: true,
+      followSymlinks: false,
       ignoreInitial: false,
       usePolling: config.usePolling ?? false,
       interval: config.pollInterval ?? 100,
     });
 
     this.watcher.on('add', (relPath) => {
-      this.emit('add', path.join(this.rootPath, relPath));
+      if (this._isSupportedFile(relPath)) {
+        this.emit('add', path.join(this.rootPath, relPath));
+      }
     });
 
     this.watcher.on('change', (relPath) => {
-      this.emit('change', path.join(this.rootPath, relPath));
+      if (this._isSupportedFile(relPath)) {
+        this.emit('change', path.join(this.rootPath, relPath));
+      }
     });
 
     this.watcher.on('unlink', (relPath) => {
-      this.emit('unlink', path.join(this.rootPath, relPath));
+      if (this._isSupportedFile(relPath)) {
+        this.emit('unlink', path.join(this.rootPath, relPath));
+      }
     });
 
     this._readyPromise = new Promise((resolve) => {
@@ -91,12 +96,16 @@ class Watcher extends EventEmitter {
     });
   }
 
+  _isSupportedFile(relPath) {
+    return this.extensions.has(path.extname(relPath));
+  }
+
   ready() {
     return this._readyPromise;
   }
 
   /**
-   * Returns a flat array of absolute paths for all files currently watched.
+   * Returns a flat array of absolute paths for all supported files currently watched.
    * Only valid after ready() resolves.
    */
   getWatchedFiles() {
@@ -105,7 +114,10 @@ class Watcher extends EventEmitter {
     for (const [dir, files] of Object.entries(watched)) {
       const absDir = dir === '.' ? this.rootPath : path.join(this.rootPath, dir);
       for (const file of files) {
-        results.push(path.join(absDir, file));
+        const relPath = dir === '.' ? file : path.join(dir, file);
+        if (this._isSupportedFile(relPath)) {
+          results.push(path.join(absDir, file));
+        }
       }
     }
     return results;

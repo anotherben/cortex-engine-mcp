@@ -41,14 +41,9 @@ if (fs.existsSync(configPath)) {
   config = require(configPath);
 }
 
-const { createServer } = require('../src/server');
-const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
+const { startStdioServer } = require('../src/server');
 
-createServer(resolvedRoot, config)
-  .then(async ({ server }) => {
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-  })
+startStdioServer(resolvedRoot, config)
   .catch((err) => {
     console.error('Failed to start cortex-engine:', err);
     process.exit(1);

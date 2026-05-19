@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { resolveInsideRoot, safeRelativePath } = require('./path-utils');
 
 class Knowledge {
   constructor(projectRoot, config = {}) {
@@ -100,10 +101,11 @@ class Knowledge {
     let synced = 0;
 
     for (const [target, entries] of byTarget) {
-      // Build a filesystem-safe relative path from target
-      // e.g. "src/services/orderService.js" -> "src/services/orderService.js.md"
-      const relPath = target.replace(/[^a-zA-Z0-9._:/-]/g, '_');
-      const mdPath = path.join(outDir, relPath + '.md');
+      // Build a filesystem-safe relative path from target.
+      const relPath = safeRelativePath(target);
+      const resolvedTarget = resolveInsideRoot(outDir, relPath + '.md');
+      if (!resolvedTarget) continue;
+      const mdPath = resolvedTarget.absPath;
 
       // Ensure subdirectory exists
       fs.mkdirSync(path.dirname(mdPath), { recursive: true });
@@ -116,7 +118,7 @@ class Knowledge {
 
       const newSections = entries.map((e) => {
         const tags = (e.tags || []).join(', ');
-        const tagLine = tags ? ` — ${tags}` : '';
+        const tagLine = tags ? ` - ${tags}` : '';
         return `### ${e.timestamp}${tagLine}\n\n${e.note}`;
       });
 

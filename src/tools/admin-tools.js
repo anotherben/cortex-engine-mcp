@@ -27,8 +27,10 @@ function registerAdminTools(server, engine, telemetry) {
     },
     async (params) => {
       const t0 = performance.now();
-      engine.reindex(params.file_path);
-      const result = { content: [{ type: 'text', text: 'Reindex complete' }] };
+      const ok = engine.reindex(params.file_path);
+      const result = ok === false
+        ? { content: [{ type: 'text', text: 'Reindex path rejected' }], isError: true }
+        : { content: [{ type: 'text', text: 'Reindex complete' }] };
       const elapsed = performance.now() - t0;
       if (!telemetry) return result;
       return telemetry.wrapTimingOnly(result, elapsed);
