@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 
 function toPosixPath(filePath) {
@@ -22,6 +23,27 @@ function resolveInsideRoot(rootPath, candidatePath) {
   };
 }
 
+function resolveExistingInsideRoot(rootPath, candidatePath) {
+  const lexical = resolveInsideRoot(rootPath, candidatePath);
+  if (!lexical) return null;
+
+  let realRoot;
+  let realCandidate;
+  try {
+    realRoot = fs.realpathSync.native(path.resolve(rootPath));
+    realCandidate = fs.realpathSync.native(lexical.absPath);
+  } catch {
+    return null;
+  }
+
+  if (!isInsidePath(realRoot, realCandidate)) return null;
+
+  return {
+    absPath: realCandidate,
+    relPath: toPosixPath(path.relative(realRoot, realCandidate)),
+  };
+}
+
 function safeRelativePath(target) {
   const value = String(target || 'global');
   const parts = value
@@ -33,4 +55,10 @@ function safeRelativePath(target) {
   return parts.join('/') || 'global';
 }
 
-module.exports = { isInsidePath, resolveInsideRoot, safeRelativePath, toPosixPath };
+module.exports = {
+  isInsidePath,
+  resolveExistingInsideRoot,
+  resolveInsideRoot,
+  safeRelativePath,
+  toPosixPath,
+};

@@ -1,7 +1,6 @@
 const {
   buildIdentifierRegExp,
   buildSearchRegExp,
-  isUnsafeRegex,
 } = require('../src/search-utils');
 
 describe('search utilities', () => {
@@ -11,9 +10,15 @@ describe('search utilities', () => {
     expect(regex.test('aaab')).toBe(false);
   });
 
-  test('regex mode rejects nested quantified groups', () => {
-    expect(isUnsafeRegex('(a+)+$')).toMatch(/Nested/);
-    expect(() => buildSearchRegExp('(a+)+$', { useRegex: true })).toThrow(/Nested/);
+  test('regex mode is disabled to avoid user-controlled backtracking', () => {
+    expect(() => buildSearchRegExp('(a+)+$', { useRegex: true })).toThrow(/disabled/);
+    expect(() => buildSearchRegExp('(a{1,})+$', { useRegex: true })).toThrow(/disabled/);
+  });
+
+  test('regex-looking patterns are literal by default', () => {
+    const regex = buildSearchRegExp('(a+)+$');
+    expect(regex.test('(a+)+$')).toBe(true);
+    expect(regex.test('aaaaaaaa')).toBe(false);
   });
 
   test('identifier searches are literal and word bounded', () => {

@@ -6,7 +6,7 @@ const { getSourceType } = require('./store');
 const Parser = require('./parser');
 const Watcher = require('./watcher');
 const Tagger = require('./tagger');
-const { resolveInsideRoot } = require('./path-utils');
+const { resolveExistingInsideRoot, resolveInsideRoot } = require('./path-utils');
 const { buildIdentifierRegExp, buildSearchRegExp } = require('./search-utils');
 
 const DEFAULT_EXTENSIONS = [
@@ -177,6 +177,10 @@ class IndexEngine {
     return resolveInsideRoot(this.projectRoot, filePath);
   }
 
+  _resolveExistingProjectFile(filePath) {
+    return resolveExistingInsideRoot(this.projectRoot, filePath);
+  }
+
   _isRegularProjectFile(absPath) {
     try {
       return fs.lstatSync(absPath).isFile();
@@ -191,7 +195,7 @@ class IndexEngine {
   }
 
   _indexFile(absPath) {
-    const resolvedPath = this._resolveProjectFile(absPath);
+    const resolvedPath = this._resolveExistingProjectFile(absPath);
     if (!resolvedPath || !this._isRegularProjectFile(resolvedPath.absPath)) return;
 
     const relPath = resolvedPath.relPath;
@@ -255,7 +259,7 @@ class IndexEngine {
   // --- Query API ---
 
   getOutline(filePath) {
-    const resolvedPath = this._resolveProjectFile(filePath);
+    const resolvedPath = this._resolveExistingProjectFile(filePath);
     if (!resolvedPath) return [];
 
     const file = this.store.getFile(resolvedPath.relPath);
@@ -264,7 +268,7 @@ class IndexEngine {
   }
 
   readSymbol(filePath, symbolName) {
-    const resolvedPath = this._resolveProjectFile(filePath);
+    const resolvedPath = this._resolveExistingProjectFile(filePath);
     if (!resolvedPath) return null;
 
     const file = this.store.getFile(resolvedPath.relPath);
@@ -299,7 +303,7 @@ class IndexEngine {
   }
 
   readRange(filePath, startLine, endLine) {
-    const resolvedPath = this._resolveProjectFile(filePath);
+    const resolvedPath = this._resolveExistingProjectFile(filePath);
     if (!resolvedPath) return null;
 
     const file = this.store.getFile(resolvedPath.relPath);
@@ -323,7 +327,7 @@ class IndexEngine {
   }
 
   getContext(filePath, symbolName) {
-    const resolvedPath = this._resolveProjectFile(filePath);
+    const resolvedPath = this._resolveExistingProjectFile(filePath);
     if (!resolvedPath) return null;
 
     const file = this.store.getFile(resolvedPath.relPath);
@@ -403,7 +407,7 @@ class IndexEngine {
 
   reindex(filePath) {
     if (filePath) {
-      const resolvedPath = this._resolveProjectFile(filePath);
+      const resolvedPath = this._resolveExistingProjectFile(filePath);
       if (!resolvedPath) return false;
       this._indexFile(resolvedPath.absPath);
       return true;

@@ -41,6 +41,18 @@ describe('IndexEngine path boundary checks', () => {
     expect(engine.readRange('src/link.txt', 1, 1)).toBeNull();
   });
 
+  test('reindex refuses files reached through symlink directories', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-index-'));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-outside-'));
+    fs.writeFileSync(path.join(outside, 'outside.js'), 'const leaked = true;\n');
+    fs.symlinkSync(outside, path.join(root, 'linked-dir'), 'dir');
+
+    const engine = makeEngine(root);
+
+    expect(engine.reindex('linked-dir/outside.js')).toBe(false);
+    expect(engine._indexFile).not.toHaveBeenCalled();
+  });
+
   test('reindex refuses traversal paths', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cortex-index-'));
     const engine = makeEngine(root);

@@ -73,11 +73,10 @@ function registerSearchTools(server, engine, telemetry, state) {
 
   server.tool(
     'cortex_find_text',
-    'Regex/literal search across indexed file contents',
+    'Literal search across indexed file contents',
     {
-      pattern: z.string().describe('Search pattern. Treated as literal text unless use_regex is true.'),
+      pattern: z.string().describe('Literal text to search for'),
       case_sensitive: z.boolean().optional().describe('Case sensitive search'),
-      use_regex: z.boolean().optional().describe('Treat pattern as a constrained regular expression'),
       repo: z.string().optional().describe('Filter to a specific repo name (multi-repo only)'),
     },
     async (params) => {
@@ -94,7 +93,6 @@ function registerSearchTools(server, engine, telemetry, state) {
       try {
         results = eng.findText(params.pattern, {
           caseSensitive: params.case_sensitive,
-          useRegex: params.use_regex === true,
         });
       } catch (err) {
         const result = {

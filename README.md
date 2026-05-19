@@ -84,7 +84,7 @@ If no config file exists, Cortex Engine uses sensible defaults and stores its in
 - `cortex_read_range`: source by line range
 - `cortex_context`: symbol plus imports and outline
 - `cortex_find_symbol`: symbol search
-- `cortex_find_text`: indexed literal text search, with constrained regex mode available
+- `cortex_find_text`: indexed literal text search
 - `cortex_find_references`: identifier references
 - `cortex_find_importers`: files that import a path
 - `cortex_find_by_tag`: semantic tag search
